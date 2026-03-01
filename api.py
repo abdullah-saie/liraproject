@@ -143,3 +143,12 @@ def manual_scrape():
 @app.get("/health")
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
+
+
+from fastapi.responses import FileResponse
+import os
+
+# المسار الرئيسي يفتح واجهة المستخدم
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    return FileResponse("index.html")
