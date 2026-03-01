@@ -12,19 +12,17 @@ def get_connection():
 
 
 def init_db():
-    """Create tables if they don't exist."""
     conn = get_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rates (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT    NOT NULL,
-            currency  TEXT    NOT NULL DEFAULT 'USD',
+            currency  TEXT    NOT NULL,
             buy       REAL,
             sell      REAL,
             source    TEXT    NOT NULL DEFAULT 'sp-today'
         )
     """)
-    # Index for fast range queries (charts)
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_rates_currency_time
         ON rates (currency, timestamp)
@@ -35,9 +33,8 @@ def init_db():
 
 
 def save_rate(currency: str, buy: float, sell: float, source: str = "sp-today"):
-    """Insert a new rate record."""
     conn = get_connection()
-    now = datetime.utcnow().isoformat()
+    now  = datetime.utcnow().isoformat()
     conn.execute(
         "INSERT INTO rates (timestamp, currency, buy, sell, source) VALUES (?, ?, ?, ?, ?)",
         (now, currency, buy, sell, source),
@@ -46,10 +43,9 @@ def save_rate(currency: str, buy: float, sell: float, source: str = "sp-today"):
     conn.close()
 
 
-def get_latest(currency: str = "USD"):
-    """Return the most recent rate for a currency."""
+def get_latest(currency: str):
     conn = get_connection()
-    row = conn.execute(
+    row  = conn.execute(
         "SELECT * FROM rates WHERE currency = ? ORDER BY timestamp DESC LIMIT 1",
         (currency,),
     ).fetchone()
@@ -57,32 +53,36 @@ def get_latest(currency: str = "USD"):
     return dict(row) if row else None
 
 
-def get_history(currency: str = "USD", limit: int = 500):
-    """Return historical rates for charting (oldest first)."""
+def get_available_currencies() -> list[str]:
+    """Return list of all currency symbols that have data in the DB."""
+    conn  = get_connection()
+    rows  = conn.execute(
+        "SELECT DISTINCT currency FROM rates ORDER BY currency"
+    ).fetchall()
+    conn.close()
+    return [r["currency"] for r in rows]
+
+
+def get_history(currency: str, limit: int = 2000):
     conn = get_connection()
     rows = conn.execute(
         """
         SELECT timestamp, buy, sell
-        FROM rates
-        WHERE currency = ?
-        ORDER BY timestamp DESC
-        LIMIT ?
+        FROM rates WHERE currency = ?
+        ORDER BY timestamp DESC LIMIT ?
         """,
         (currency, limit),
     ).fetchall()
     conn.close()
-    # Reverse so oldest is first (better for charts)
     return [dict(r) for r in reversed(rows)]
 
 
 def get_history_range(currency: str, start: str, end: str):
-    """Return rates between two ISO timestamps."""
     conn = get_connection()
     rows = conn.execute(
         """
         SELECT timestamp, buy, sell
-        FROM rates
-        WHERE currency = ? AND timestamp BETWEEN ? AND ?
+        FROM rates WHERE currency = ? AND timestamp BETWEEN ? AND ?
         ORDER BY timestamp ASC
         """,
         (currency, start, end),
